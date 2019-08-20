@@ -316,29 +316,57 @@ func (api *ApiV2) WebWxStatusNotify(common *Common, ce *XmlConfig, bot *User) (i
 
 // WebWxGetContact: webwxgetcontact api
 func (api *ApiV2) WebWxGetContact(common *Common, ce *XmlConfig, cookies []*http.Cookie) ([]byte, error) {
-	km := url.Values{}
-	km.Add("r", strconv.FormatInt(time.Now().Unix(), 10))
-	km.Add("seq", "0")
-	km.Add("skey", ce.Skey)
-	uri := common.CgiUrl + "/webwxgetcontact?" + km.Encode()
+	var seq = "0"
+	for {
+		km := url.Values{}
+		km.Add("r", strconv.FormatInt(time.Now().Unix(), 10))
+		km.Add("seq", seq)
+		km.Add("skey", ce.Skey)
+		uri := common.CgiUrl + "/webwxgetcontact?" + km.Encode()
 
-	js := InitReqBody{
-		BaseRequest: &BaseRequest{
-			ce.Wxuin,
-			ce.Wxsid,
-			ce.Skey,
-			common.DeviceID,
-		},
+		js := InitReqBody{
+			BaseRequest: &BaseRequest{
+				ce.Wxuin,
+				ce.Wxsid,
+				ce.Skey,
+				common.DeviceID,
+			},
+		}
+
+		b, err := json.Marshal(js)
+		if err != nil {
+			return []byte{}, err
+		}
+
+		jar, _ := cookiejar.New(nil)
+		if err != nil {
+			return []byte{}, err
+		}
+
+		u, err := url.Parse(uri)
+		if err != nil {
+			return []byte{}, err
+		}
+
+		jar.SetCookies(u, cookies)
+		api.httpClient.SetJar(jar)
+		body, err := api.httpClient.PostJsonByte(uri, b)
+		if err != nil {
+			return []byte{}, err
+		}
+
+		var tmp WxWebGetContactResponse
+		err = json.Unmarshal(body, &tmp)
+		if err != nil {
+			return []byte{}, err
+		}
+
+		if tmp.Seq == 0 {
+			return body, nil
+		}
+		seq = strconv.Itoa(tmp.Seq)
+		time.Sleep(1 * time.Millisecond)
 	}
-
-	b, _ := json.Marshal(js)
-
-	jar, _ := cookiejar.New(nil)
-	u, _ := url.Parse(uri)
-	jar.SetCookies(u, cookies)
-	api.httpClient.SetJar(jar)
-	body, _ := api.httpClient.PostJsonByte(uri, b)
-	return body, nil
 }
 
 // WebWxSendMsg: webwxsendmsg api
@@ -687,7 +715,7 @@ type ChatroomReqBody struct {
 }
 
 //WxUpdateChatroom
-func (a *ApiV2) WxUpdateChatroom(common *Common, ce *XmlConfig, cookies []*http.Cookie, ChatRoomName, InviteMemberList string) {
+func (api *ApiV2) WxUpdateChatroom(common *Common, ce *XmlConfig, cookies []*http.Cookie, ChatRoomName, InviteMemberList string) {
 	km := url.Values{}
 	km.Add("fun", "invitemember")
 	km.Add("lang", common.Lang)
@@ -710,9 +738,9 @@ func (a *ApiV2) WxUpdateChatroom(common *Common, ce *XmlConfig, cookies []*http.
 	jar, _ := cookiejar.New(nil)
 	u, _ := url.Parse(uri)
 	jar.SetCookies(u, cookies)
-	a.httpClient.SetJar(jar)
+	api.httpClient.SetJar(jar)
 
-	a.httpClient.PostJsonByteForResp(uri, b)
+	api.httpClient.PostJsonByteForResp(uri, b)
 }
 
 // WebWxVerifyUser: webwxverifyuser api
